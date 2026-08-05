@@ -66,25 +66,33 @@ const autoCreatePostgresDB = async () => {
 };
 
 let isConnected = false;
+let connectionPromise = null;
 
 const connectDB = async () => {
   if (isConnected) return;
-  const currentDialect = getDialect();
-  try {
-    if (currentDialect === 'postgres') {
-      await autoCreatePostgresDB();
+  if (connectionPromise) return connectionPromise;
+
+  connectionPromise = (async () => {
+    const currentDialect = getDialect();
+    try {
+      if (currentDialect === 'postgres') {
+        await autoCreatePostgresDB();
+      }
+
+      await sequelize.authenticate();
+      console.log(`Database Connected Successfully (${currentDialect.toUpperCase()}) via Sequelize`);
+
+      await sequelize.sync({ alter: false });
+      console.log('Database Models Synchronized Successfully');
+      isConnected = true;
+    } catch (error) {
+      console.error(`\n❌ ${currentDialect.toUpperCase()} Connection Error: ${error.message}`);
+      connectionPromise = null;
+      throw error;
     }
+  })();
 
-    await sequelize.authenticate();
-    console.log(`Database Connected Successfully (${currentDialect.toUpperCase()}) via Sequelize`);
-
-    await sequelize.sync({ alter: false });
-    console.log('Database Models Synchronized Successfully');
-    isConnected = true;
-  } catch (error) {
-    console.error(`\n❌ ${currentDialect.toUpperCase()} Connection Error: ${error.message}`);
-    console.error(`👉 Note: If PostgreSQL is not installed or running, set DB_DIALECT=sqlite in backend/.env for instant zero-setup local database testing.\n`);
-  }
+  return connectionPromise;
 };
 
 module.exports = { sequelize, connectDB };

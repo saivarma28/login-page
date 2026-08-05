@@ -11,13 +11,21 @@ const { initFirebase } = require('./config/firebase');
 const authRoutes = require('./routes/authRoutes');
 const { notFound, errorHandler } = require('./middleware/errorMiddleware');
 
-// Connect to Database
-connectDB();
-
 // Initialize Firebase Admin SDK for Phone Authentication
 initFirebase();
 
 const app = express();
+
+// Middleware to guarantee Database connection & table sync before processing requests
+app.use(async (req, res, next) => {
+  try {
+    await connectDB();
+    next();
+  } catch (err) {
+    console.error('Database connection middleware error:', err.message);
+    res.status(500).json({ success: false, message: 'Database initialization error' });
+  }
+});
 
 // Middlewares Configuration
 app.use(express.json());
