@@ -299,10 +299,8 @@ document.addEventListener('DOMContentLoaded', () => {
           showToast(`📱 Real SMS OTP sent directly to ${phoneFormatted}! Check your mobile.`, 'success');
           return;
         } catch (fbErr) {
-          console.error('Firebase Real SMS Error:', fbErr);
-          showToast(`Firebase SMS Notice: ${fbErr.message}`, 'error');
-        } finally {
-          sendRegOtpBtn.disabled = false;
+          console.warn('Firebase SMS dispatch warning (proceeding to server OTP fallback):', fbErr.message);
+          // Seamlessly fall through to backend API dispatch below!
         }
       }
 
