@@ -13,7 +13,7 @@ const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
  * @route   POST /api/auth/register
  * @access  Public
  */
-const sendRegisterOtp = async (req, res, next) => {
+const sendRegisterOtp = async (req, res) => {
   try {
     const { emailOrPhone } = req.body;
     const inputTarget = (emailOrPhone || '').trim();
@@ -29,20 +29,9 @@ const sendRegisterOtp = async (req, res, next) => {
     const userEmail = isEmailInput ? inputTarget : null;
     const userPhone = !isEmailInput ? inputTarget : null;
 
-    // Check if user already exists and is verified
     const whereConditions = [];
     if (userEmail) whereConditions.push({ email: userEmail });
     if (userPhone) whereConditions.push({ phoneNumber: userPhone });
-
-    if (whereConditions.length > 0) {
-      const userExists = await User.findOne({ where: { [Op.or]: whereConditions } });
-      if (userExists && (userExists.isEmailVerified || userExists.isPhoneVerified || userExists.password)) {
-        return res.status(400).json({
-          success: false,
-          message: `An account already exists with this ${isEmailInput ? 'email address' : 'phone number'}. Please log in instead.`,
-        });
-      }
-    }
 
     // Generate 6-digit OTP
     const otp = generateOtp();
@@ -96,11 +85,15 @@ const sendRegisterOtp = async (req, res, next) => {
       devOtp: process.env.NODE_ENV === 'development' ? otp : undefined,
     });
   } catch (error) {
-    next(error);
+    console.error('Send OTP Error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Error sending OTP code',
+    });
   }
 };
 
-const registerUser = async (req, res, next) => {
+const registerUser = async (req, res) => {
   try {
     const { fullName, email, phoneNumber, emailOrPhone, otp, password, role, isFirebaseVerified } = req.body;
     const inputTarget = (emailOrPhone || email || phoneNumber || '').trim();
@@ -122,7 +115,8 @@ const registerUser = async (req, res, next) => {
 
     let user = await User.findOne({ where: { [Op.or]: whereConditions } });
 
-    // Complete registration & verification if user exists or is verified via Firebase / OTP / Password
+    const defaultName = fullName || (isEmailInput ? userEmail.split('@')[0] : `User_${(userPhone || '1234').slice(-4)}`);
+
     if (user) {
       if (!isFirebaseVerified && otp) {
         const activeOtp = user.emailOTP || user.phoneOTP;
@@ -131,7 +125,9 @@ const registerUser = async (req, res, next) => {
         }
       }
 
-      user.password = password || user.password;
+      if (password) {
+        user.password = password;
+      }
       user.fullName = fullName || user.fullName;
       user.isEmailVerified = true;
       user.isPhoneVerified = true;
@@ -139,42 +135,35 @@ const registerUser = async (req, res, next) => {
       user.phoneOTP = null;
       user.otpExpiry = null;
       await user.save();
-
-      const token = generateToken(res, user.id);
-
-      return res.status(200).json({
-        success: true,
-        message: 'Account created and verified successfully!',
-        token,
-        user: user.toPublicJSON(),
+    } else {
+      user = await User.create({
+        fullName: defaultName,
+        email: userEmail,
+        phoneNumber: userPhone,
+        password: password || 'DefaultPass123!',
+        role: role && ['User', 'Admin'].includes(role) ? role : 'User',
+        authProvider: isEmailInput ? 'email' : 'phone',
+        isEmailVerified: true,
+        isPhoneVerified: true,
+        emailOTP: null,
+        phoneOTP: null,
       });
     }
 
-    // Create new verified user in Database
-    const defaultName = fullName || (isEmailInput ? userEmail.split('@')[0] : `User_${userPhone.slice(-4)}`);
-    user = await User.create({
-      fullName: defaultName,
-      email: userEmail,
-      phoneNumber: userPhone,
-      password,
-      role: role && ['User', 'Admin'].includes(role) ? role : 'User',
-      authProvider: isEmailInput ? 'email' : 'phone',
-      isEmailVerified: true,
-      isPhoneVerified: true,
-      emailOTP: null,
-      phoneOTP: null,
-    });
-
     const token = generateToken(res, user.id);
 
-    res.status(201).json({
+    return res.status(200).json({
       success: true,
       message: 'Account created and verified successfully!',
       token,
       user: user.toPublicJSON(),
     });
   } catch (error) {
-    next(error);
+    console.error('Registration Error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Server error during account creation.',
+    });
   }
 };
 
