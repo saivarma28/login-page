@@ -405,8 +405,19 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       if (data && data.success) {
-        showToast('Account created and verified successfully!', 'success');
-        renderUserDashboard(data.user);
+        showToast('🎉 Account Created Successfully!', 'success');
+
+        const successModal = document.getElementById('account-success-modal');
+        const nameDisplay = document.getElementById('success-user-name-display');
+        if (nameDisplay && data.user) {
+          nameDisplay.textContent = data.user.fullName || data.user.email || data.user.phoneNumber || 'User';
+        }
+        window.pendingCreatedUser = data.user;
+        if (successModal) {
+          successModal.classList.remove('hidden');
+        } else {
+          renderUserDashboard(data.user);
+        }
       } else {
         showToast((data && data.message) || 'Registration failed', 'error');
       }
@@ -416,6 +427,23 @@ document.addEventListener('DOMContentLoaded', () => {
       setTimeout(checkAuthStatus, 500);
     }
   });
+
+  // Account Success Modal Actions
+  const continueBtn = document.getElementById('continue-to-dashboard-btn');
+  const closeSuccessBtn = document.getElementById('close-account-success-modal');
+  const accountSuccessModal = document.getElementById('account-success-modal');
+
+  const handleGoToDashboard = () => {
+    if (accountSuccessModal) accountSuccessModal.classList.add('hidden');
+    if (window.pendingCreatedUser) {
+      renderUserDashboard(window.pendingCreatedUser);
+    } else {
+      checkAuthStatus();
+    }
+  };
+
+  if (continueBtn) continueBtn.addEventListener('click', handleGoToDashboard);
+  if (closeSuccessBtn) closeSuccessBtn.addEventListener('click', handleGoToDashboard);
 
   // 3. VERIFY REGISTRATION OTP HANDLER
   if (emailOtpForm) {

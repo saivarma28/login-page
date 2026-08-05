@@ -256,6 +256,37 @@
 
   </div>
 
+  <!-- Account Created Success Modal -->
+  <div class="modal-backdrop hidden" id="account-success-modal">
+    <div class="modal-card success-modal-card">
+      <button class="modal-close" id="close-account-success-modal">&times;</button>
+      
+      <div class="success-modal-icon-container">
+        <i class="fa-solid fa-circle-check"></i>
+      </div>
+      
+      <h3 class="success-title">Account Created Successfully! 🎉</h3>
+      <p class="success-subtitle">Your account has been verified and registered. Welcome to PulseAuth!</p>
+
+      <div class="success-user-summary">
+        <div class="summary-chip">
+          <i class="fa-solid fa-user-check"></i>
+          <span id="success-user-name-display">User</span>
+        </div>
+        <div class="summary-chip">
+          <i class="fa-solid fa-shield-halved"></i>
+          <span>2FA Verified</span>
+        </div>
+      </div>
+
+      <div class="modal-actions-row">
+        <button type="button" class="btn-primary" id="continue-to-dashboard-btn">
+          <span>Go to Dashboard</span> <i class="fa-solid fa-arrow-right"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Forgot Password Modal -->
   <div class="modal-backdrop hidden" id="forgot-password-modal">
     <div class="modal-card">
