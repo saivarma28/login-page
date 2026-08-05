@@ -13,6 +13,13 @@ const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
  * @route   POST /api/auth/register
  * @access  Public
  */
+const getPhoneVariants = (phoneStr) => {
+  if (!phoneStr) return [];
+  const digits = phoneStr.replace(/[^0-9]/g, '');
+  const raw10 = digits.length >= 10 ? digits.slice(-10) : digits;
+  return [raw10, `+91${raw10}`, `91${raw10}`];
+};
+
 const sendRegisterOtp = async (req, res) => {
   try {
     const { emailOrPhone } = req.body;
@@ -26,12 +33,14 @@ const sendRegisterOtp = async (req, res) => {
     }
 
     const isEmailInput = inputTarget.includes('@');
-    const userEmail = isEmailInput ? inputTarget : null;
+    const userEmail = isEmailInput ? inputTarget.toLowerCase() : null;
     const userPhone = !isEmailInput ? inputTarget : null;
 
     const whereConditions = [];
     if (userEmail) whereConditions.push({ email: userEmail });
-    if (userPhone) whereConditions.push({ phoneNumber: userPhone });
+    if (userPhone) {
+      getPhoneVariants(userPhone).forEach(p => whereConditions.push({ phoneNumber: p }));
+    }
 
     // Generate 6-digit OTP
     const otp = generateOtp();
@@ -41,7 +50,7 @@ const sendRegisterOtp = async (req, res) => {
 
     if (!user) {
       user = await User.create({
-        fullName: isEmailInput ? userEmail.split('@')[0] : `User_${userPhone.slice(-4)}`,
+        fullName: isEmailInput ? userEmail.split('@')[0] : `User_${(userPhone || '1234').slice(-4)}`,
         email: userEmail,
         phoneNumber: userPhone,
         authProvider: isEmailInput ? 'email' : 'phone',
@@ -106,12 +115,14 @@ const registerUser = async (req, res) => {
     }
 
     const isEmailInput = inputTarget.includes('@');
-    const userEmail = isEmailInput ? inputTarget : (email || null);
+    const userEmail = isEmailInput ? inputTarget.toLowerCase() : (email ? email.toLowerCase() : null);
     const userPhone = !isEmailInput ? inputTarget : (phoneNumber || null);
 
     const whereConditions = [];
     if (userEmail) whereConditions.push({ email: userEmail });
-    if (userPhone) whereConditions.push({ phoneNumber: userPhone });
+    if (userPhone) {
+      getPhoneVariants(userPhone).forEach(p => whereConditions.push({ phoneNumber: p }));
+    }
 
     let user = await User.findOne({ where: { [Op.or]: whereConditions } });
 

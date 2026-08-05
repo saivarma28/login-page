@@ -408,7 +408,8 @@ document.addEventListener('DOMContentLoaded', () => {
         showToast(data.message || 'Registration failed', 'error');
       }
     } catch (err) {
-      showToast('Server error during account creation.', 'error');
+      console.error('Registration fetch error:', err);
+      showToast(err.message || 'Server error during account creation.', 'error');
     }
   });
 
