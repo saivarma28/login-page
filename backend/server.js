@@ -53,15 +53,17 @@ app.use('/api/auth', authRoutes);
 app.use(notFound);
 app.use(errorHandler);
 
-// Start Server
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log('\n==================================================');
-  console.log('🚀 Server Started Successfully!');
-  console.log(`➜ Local:   http://localhost:${PORT}/`);
-  console.log(`➜ Network: http://127.0.0.1:${PORT}/`);
-  console.log(`➜ Mode:    ${process.env.NODE_ENV || 'development'}`);
-  console.log('==================================================\n');
-});
+// Start Server locally (skip app.listen on Vercel serverless)
+if (!process.env.VERCEL) {
+  const PORT = process.env.PORT || 5000;
+  app.listen(PORT, () => {
+    console.log('\n==================================================');
+    console.log('🚀 Server Started Successfully!');
+    console.log(`➜ Local:   http://localhost:${PORT}/`);
+    console.log(`➜ Network: http://127.0.0.1:${PORT}/`);
+    console.log(`➜ Mode:    ${process.env.NODE_ENV || 'development'}`);
+    console.log('==================================================\n');
+  });
+}
 
 module.exports = app;
