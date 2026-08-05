@@ -198,13 +198,26 @@
 
     <!-- Authenticated User Profile Dashboard (Hidden initially) -->
     <div class="dashboard-card hidden" id="dashboard-card">
+      
+      <!-- Top Success Banner -->
+      <div class="success-top-banner">
+        <div class="success-icon-pulse">
+          <i class="fa-solid fa-circle-check"></i>
+        </div>
+        <h3>Login & Verification Successful! 🎉</h3>
+        <p>Your account is fully active and secured with PulseAuth.</p>
+      </div>
+
       <div class="dashboard-header">
         <div class="user-avatar-box">
           <span id="user-avatar-initials">JD</span>
         </div>
         <div class="user-welcome">
           <h2>Welcome, <span id="dash-user-name">User</span>!</h2>
-          <span class="user-badge" id="dash-user-role">User</span>
+          <div class="badge-row">
+            <span class="user-badge" id="dash-user-role">User</span>
+            <span class="verified-badge"><i class="fa-solid fa-shield-halved"></i> 2FA Verified</span>
+          </div>
         </div>
       </div>
 
@@ -223,8 +236,8 @@
             <span class="dash-val" id="dash-user-provider">email</span>
           </div>
           <div class="dash-item">
-            <span class="dash-label"><i class="fa-solid fa-check-circle"></i> Verification</span>
-            <span class="dash-val status-verified" id="dash-user-verified">Verified</span>
+            <span class="dash-label"><i class="fa-solid fa-check-circle"></i> Account Status</span>
+            <span class="dash-val status-verified" id="dash-user-verified">Active Session</span>
           </div>
         </div>
       </div>
