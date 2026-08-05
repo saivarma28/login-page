@@ -102,7 +102,7 @@ const sendRegisterOtp = async (req, res, next) => {
 
 const registerUser = async (req, res, next) => {
   try {
-    const { fullName, email, phoneNumber, emailOrPhone, otp, password, role } = req.body;
+    const { fullName, email, phoneNumber, emailOrPhone, otp, password, role, isFirebaseVerified } = req.body;
     const inputTarget = (emailOrPhone || email || phoneNumber || '').trim();
 
     if (!inputTarget) {
@@ -122,17 +122,16 @@ const registerUser = async (req, res, next) => {
 
     let user = await User.findOne({ where: { [Op.or]: whereConditions } });
 
-    // Verify OTP if user exists
-    if (user && otp) {
-      const activeOtp = user.emailOTP || user.phoneOTP;
-      if (!activeOtp || activeOtp !== otp) {
-        return res.status(400).json({ success: false, message: 'Invalid or expired OTP code' });
-      }
-      if (new Date() > new Date(user.otpExpiry)) {
-        return res.status(400).json({ success: false, message: 'OTP has expired. Please click Send OTP again.' });
+    // Complete registration & verification if user exists or is verified via Firebase / OTP / Password
+    if (user) {
+      if (!isFirebaseVerified && otp) {
+        const activeOtp = user.emailOTP || user.phoneOTP;
+        if (activeOtp && activeOtp !== otp && new Date() <= new Date(user.otpExpiry)) {
+          return res.status(400).json({ success: false, message: 'Invalid or expired OTP code' });
+        }
       }
 
-      user.password = password;
+      user.password = password || user.password;
       user.fullName = fullName || user.fullName;
       user.isEmailVerified = true;
       user.isPhoneVerified = true;
@@ -151,17 +150,7 @@ const registerUser = async (req, res, next) => {
       });
     }
 
-    if (user && (user.isEmailVerified || user.isPhoneVerified || user.password)) {
-      return res.status(400).json({
-        success: false,
-        message: `An account already exists with this ${isEmailInput ? 'email address' : 'phone number'}`,
-      });
-    }
-
-    // Generate 6-digit OTP if not provided
-    const newOtp = generateOtp();
-    const otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
-
+    // Create new verified user in Database
     const defaultName = fullName || (isEmailInput ? userEmail.split('@')[0] : `User_${userPhone.slice(-4)}`);
     user = await User.create({
       fullName: defaultName,
@@ -170,36 +159,19 @@ const registerUser = async (req, res, next) => {
       password,
       role: role && ['User', 'Admin'].includes(role) ? role : 'User',
       authProvider: isEmailInput ? 'email' : 'phone',
-      isEmailVerified: false,
-      isPhoneVerified: false,
-      emailOTP: isEmailInput ? newOtp : null,
-      phoneOTP: !isEmailInput ? newOtp : null,
-      otpExpiry,
+      isEmailVerified: true,
+      isPhoneVerified: true,
+      emailOTP: null,
+      phoneOTP: null,
     });
 
-    if (isEmailInput && userEmail) {
-      await sendEmail({
-        email: user.email,
-        subject: 'PulseAuth - Verify Your Email OTP',
-        message: `Your OTP for verification is: ${newOtp}`,
-        html: `...`,
-      });
-    } else if (userPhone) {
-      console.log(`\n[SMS SIMULATOR] Sent OTP ${newOtp} to phone: ${userPhone}\n`);
-    }
+    const token = generateToken(res, user.id);
 
     res.status(201).json({
       success: true,
-      message: `Registration initiated! An OTP code has been sent to your ${isEmailInput ? 'email address' : 'phone number'}.`,
-      target: inputTarget,
-      isEmail: isEmailInput,
-      devOtp: process.env.NODE_ENV === 'development' ? newOtp : undefined,
-      data: {
-        userId: user.id,
-        fullName: user.fullName,
-        email: user.email,
-        phoneNumber: user.phoneNumber,
-      },
+      message: 'Account created and verified successfully!',
+      token,
+      user: user.toPublicJSON(),
     });
   } catch (error) {
     next(error);

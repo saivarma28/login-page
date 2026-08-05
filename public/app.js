@@ -378,9 +378,12 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
+    let isFirebaseVerified = false;
+
     if (window.confirmationResult) {
       try {
         await window.confirmationResult.confirm(otp);
+        isFirebaseVerified = true;
         showToast('📱 SMS OTP verified successfully via Firebase!', 'success');
       } catch (fbConfirmErr) {
         showToast('Invalid SMS OTP code. Please check your mobile messages.', 'error');
@@ -393,7 +396,7 @@ document.addEventListener('DOMContentLoaded', () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ fullName, emailOrPhone: target, otp, password })
+        body: JSON.stringify({ fullName, emailOrPhone: target, otp, password, isFirebaseVerified })
       });
 
       const data = await res.json();
