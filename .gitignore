@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+backend/node_modules/
+
+# Environment Secrets
+.env
+backend/.env
+*.env
+*.pem
+*.json
+!package.json
+!package-lock.json
+!backend/package.json
+!backend/package-lock.json
+
+# SQLite Database
+*.sqlite
+backend/database.sqlite
+
+# System & Log Files
+.DS_Store
+Thumbs.db
+*.log

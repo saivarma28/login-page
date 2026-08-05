@@ -1,0 +1,10 @@
+{
+  "name": "login-page-root",
+  "version": "1.0.0",
+  "description": "Root scripts for Login Page backend",
+  "main": "backend/server.js",
+  "scripts": {
+    "start": "npm run start --prefix backend",
+    "dev": "npm run dev --prefix backend"
+  }
+}
