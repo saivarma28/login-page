@@ -54,8 +54,10 @@ app.get('/api/status', (req, res) => {
   });
 });
 
-// Mount Auth Routes
+// Mount Auth Routes (supports /api/auth, /auth, and /api serverless rewrites)
 app.use('/api/auth', authRoutes);
+app.use('/auth', authRoutes);
+app.use('/api', authRoutes);
 
 // Error Handling Middlewares
 app.use(notFound);
