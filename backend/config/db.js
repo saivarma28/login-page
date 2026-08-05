@@ -65,7 +65,10 @@ const autoCreatePostgresDB = async () => {
   }
 };
 
+let isConnected = false;
+
 const connectDB = async () => {
+  if (isConnected) return;
   const currentDialect = getDialect();
   try {
     if (currentDialect === 'postgres') {
@@ -77,6 +80,7 @@ const connectDB = async () => {
 
     await sequelize.sync({ alter: false });
     console.log('Database Models Synchronized Successfully');
+    isConnected = true;
   } catch (error) {
     console.error(`\n❌ ${currentDialect.toUpperCase()} Connection Error: ${error.message}`);
     console.error(`👉 Note: If PostgreSQL is not installed or running, set DB_DIALECT=sqlite in backend/.env for instant zero-setup local database testing.\n`);
