@@ -3,14 +3,18 @@ const { Sequelize } = require('sequelize');
 const { Client } = require('pg');
 const path = require('path');
 
-const getDialect = () => process.env.DB_DIALECT || 'postgres';
+const getDialect = () => process.env.DB_DIALECT || (process.env.DATABASE_URL ? 'postgres' : 'sqlite');
 
 const createSequelizeInstance = () => {
   const dialect = getDialect();
   if (dialect === 'sqlite') {
+    const sqlitePath = process.env.VERCEL 
+      ? path.join('/tmp', 'database.sqlite') 
+      : path.join(__dirname, '../database.sqlite');
+
     return new Sequelize({
       dialect: 'sqlite',
-      storage: path.join(__dirname, '../database.sqlite'),
+      storage: sqlitePath,
       logging: false,
     });
   } else if (process.env.DATABASE_URL) {
