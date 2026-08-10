@@ -336,7 +336,14 @@ document.addEventListener('DOMContentLoaded', () => {
           body: JSON.stringify({ emailOrPhone: target })
         });
 
-        const data = await res.json();
+        let data;
+        const contentType = res.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+          data = await res.json();
+        } else {
+          const rawText = await res.text();
+          throw new Error(rawText && rawText.length < 100 ? rawText : `Server returned HTTP ${res.status}`);
+        }
 
         if (data.success) {
           regOtpSection.classList.remove('hidden');
@@ -346,16 +353,22 @@ document.addEventListener('DOMContentLoaded', () => {
           const firstPin = document.querySelector('#reg-pin-container .pin-digit');
           if (firstPin) firstPin.focus();
 
-          const successMsg = isEmail 
+          let successMsg = isEmail 
             ? `📧 OTP code sent to ${target}! Please check your email inbox.`
             : `📱 OTP code sent successfully to ${target}!`;
+
+          if (data.devOtp) {
+            successMsg += ` (OTP: ${data.devOtp})`;
+          }
+
           showToast(successMsg, 'success');
         } else {
           showToast(data.message || 'Failed to send OTP code', 'error');
           sendRegOtpBtn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Send OTP';
         }
       } catch (err) {
-        showToast('Error sending OTP code', 'error');
+        console.error('Send OTP Error:', err);
+        showToast(err.message || 'Error sending OTP code', 'error');
         sendRegOtpBtn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Send OTP';
       } finally {
         sendRegOtpBtn.disabled = false;

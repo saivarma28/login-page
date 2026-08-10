@@ -33,6 +33,9 @@ const sendEmail = async (options) => {
         user,
         pass,
       },
+      connectionTimeout: 5000, // 5 seconds connection timeout for serverless resilience
+      greetingTimeout: 5000,
+      socketTimeout: 5000,
     });
 
     const mailOptions = {

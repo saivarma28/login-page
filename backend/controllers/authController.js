@@ -67,8 +67,9 @@ const sendRegisterOtp = async (req, res) => {
       });
     }
 
+    let emailResult = null;
     if (isEmailInput && userEmail) {
-      await sendEmail({
+      emailResult = await sendEmail({
         email: userEmail,
         subject: 'Geonixa - Registration OTP Code',
         message: `Your verification OTP code is: ${otp}`,
@@ -87,6 +88,9 @@ const sendRegisterOtp = async (req, res) => {
       console.log(`\n[SMS SIMULATOR] Sent OTP ${otp} to phone: ${userPhone}\n`);
     }
 
+    const isSimulated = !emailResult || emailResult.status === 'simulated';
+    const devOtp = (process.env.NODE_ENV === 'development' || process.env.VERCEL || isSimulated) ? otp : undefined;
+
     res.status(200).json({
       success: true,
       message: isEmailInput 
@@ -94,6 +98,7 @@ const sendRegisterOtp = async (req, res) => {
         : `OTP code sent successfully to ${inputTarget}. Please check your mobile messages!`,
       target: inputTarget,
       isEmail: isEmailInput,
+      devOtp,
     });
   } catch (error) {
     console.error('Send OTP Error:', error);

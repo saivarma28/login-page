@@ -2,15 +2,18 @@ require('dotenv').config();
 const { Sequelize } = require('sequelize');
 const { Client } = require('pg');
 const path = require('path');
+const fs = require('fs');
 
 const getDialect = () => process.env.DB_DIALECT || (process.env.DATABASE_URL ? 'postgres' : 'sqlite');
 
 const createSequelizeInstance = () => {
   const dialect = getDialect();
   if (dialect === 'sqlite') {
-    const sqlitePath = process.env.VERCEL 
-      ? path.join('/tmp', 'database.sqlite') 
-      : path.join(__dirname, '../database.sqlite');
+    const sqliteDir = process.env.VERCEL ? '/tmp' : path.join(__dirname, '..');
+    if (!fs.existsSync(sqliteDir)) {
+      try { fs.mkdirSync(sqliteDir, { recursive: true }); } catch (e) {}
+    }
+    const sqlitePath = path.join(sqliteDir, 'database.sqlite');
 
     return new Sequelize({
       dialect: 'sqlite',
@@ -22,7 +25,7 @@ const createSequelizeInstance = () => {
       dialect: 'postgres',
       logging: false,
       dialectOptions: {
-        ssl: process.env.PG_SSL === 'true' ? { require: true, rejectUnauthorized: false } : false,
+        ssl: process.env.PG_SSL === 'false' ? false : { require: true, rejectUnauthorized: false },
       },
     });
   } else {
@@ -42,9 +45,9 @@ const createSequelizeInstance = () => {
 
 let sequelize = createSequelizeInstance();
 
-// Auto-create PostgreSQL database if missing
+// Auto-create PostgreSQL database if missing (only for local standalone postgres, skip for remote DATABASE_URL or sqlite)
 const autoCreatePostgresDB = async () => {
-  if (getDialect() === 'sqlite') return;
+  if (getDialect() === 'sqlite' || process.env.DATABASE_URL) return;
   const host = process.env.PG_HOST || 'localhost';
   const port = parseInt(process.env.PG_PORT || '5432', 10);
   const user = process.env.PG_USER || 'postgres';
