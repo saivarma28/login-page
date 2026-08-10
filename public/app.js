@@ -357,10 +357,6 @@ document.addEventListener('DOMContentLoaded', () => {
             ? `📧 OTP code sent to ${target}! Please check your email inbox.`
             : `📱 OTP code sent successfully to ${target}!`;
 
-          if (data.devOtp) {
-            successMsg += ` (OTP: ${data.devOtp})`;
-          }
-
           showToast(successMsg, 'success');
         } else {
           showToast(data.message || 'Failed to send OTP code', 'error');

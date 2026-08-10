@@ -89,7 +89,7 @@ const sendRegisterOtp = async (req, res) => {
     }
 
     const isSimulated = !emailResult || emailResult.status === 'simulated';
-    const devOtp = (process.env.NODE_ENV === 'development' || process.env.VERCEL || isSimulated) ? otp : undefined;
+    const devOtp = isSimulated ? otp : undefined;
 
     res.status(200).json({
       success: true,
