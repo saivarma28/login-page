@@ -10,8 +10,12 @@ const sendEmail = async (options) => {
   const user = process.env.SMTP_EMAIL;
   const pass = process.env.SMTP_PASSWORD;
 
-  // Check if SMTP options are valid
-  if (!host || !user || pass === 'your_app_password' || user === 'your_email@gmail.com') {
+  // Check if SMTP options are valid or placeholder
+  const isPlaceholder = !host || !user || !pass || 
+    pass.includes('your_') || pass.includes('dev_') || 
+    user.includes('your_') || user.includes('dev@') || user.includes('example.com');
+
+  if (isPlaceholder) {
     console.log(`\n========================================`);
     console.log(`[SMTP SIMULATOR] Email to: ${options.email}`);
     console.log(`[SMTP SIMULATOR] Subject: ${options.subject}`);
@@ -20,27 +24,34 @@ const sendEmail = async (options) => {
     return { status: 'simulated', message: 'Email simulated in development mode' };
   }
 
-  const transporter = nodemailer.createTransport({
-    host,
-    port,
-    secure: port === 465, // true for 465, false for other ports
-    auth: {
-      user,
-      pass,
-    },
-  });
+  try {
+    const transporter = nodemailer.createTransport({
+      host,
+      port,
+      secure: port === 465, // true for 465, false for other ports
+      auth: {
+        user,
+        pass,
+      },
+    });
 
-  const mailOptions = {
-    from: `"${process.env.FROM_NAME || 'Login Page'}" <${process.env.FROM_EMAIL || user}>`,
-    to: options.email,
-    subject: options.subject,
-    text: options.message,
-    html: options.html || `<p>${options.message}</p>`,
-  };
+    const mailOptions = {
+      from: `"${process.env.FROM_NAME || 'Login Page'}" <${process.env.FROM_EMAIL || user}>`,
+      to: options.email,
+      subject: options.subject,
+      text: options.message,
+      html: options.html || `<p>${options.message}</p>`,
+    };
 
-  const info = await transporter.sendMail(mailOptions);
-  console.log(`Email sent: ${info.messageId}`);
-  return info;
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`Email sent successfully: ${info.messageId}`);
+    return info;
+  } catch (err) {
+    console.warn(`[SMTP Warning] Could not send email via SMTP (${err.message}). Falling back to simulator mode.`);
+    console.log(`[SMTP SIMULATOR FALLBACK] Email to: ${options.email}`);
+    console.log(`[SMTP SIMULATOR FALLBACK] Message: ${options.message}`);
+    return { status: 'simulated', message: 'Email simulated due to SMTP delivery fallback' };
+  }
 };
 
 module.exports = sendEmail;

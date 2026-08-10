@@ -17,6 +17,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let currentEmailForOtp = '';
   let currentPhoneForOtp = '';
   let currentForgotEmail = '';
+  let currentResetToken = null;
 
   // Element Selectors
   const toastContainer = document.getElementById('toast-container');
@@ -131,7 +132,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // Auto-Tab for PIN Digits
+  // Auto-Tab for PIN Digits (Supports typing, auto-tabbing, and paste)
   function setupPinAutoTab(containerId) {
     const container = document.getElementById(containerId);
     if (!container) return;
@@ -140,7 +141,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     inputs.forEach((input, index) => {
       input.addEventListener('input', (e) => {
-        if (e.target.value.length === 1 && index < inputs.length - 1) {
+        const val = e.target.value;
+        if (val.length > 1) {
+          prefillPin(containerId, val);
+          return;
+        }
+        if (val.length === 1 && index < inputs.length - 1) {
           inputs[index + 1].focus();
         }
       });
@@ -148,6 +154,14 @@ document.addEventListener('DOMContentLoaded', () => {
       input.addEventListener('keydown', (e) => {
         if (e.key === 'Backspace' && !e.target.value && index > 0) {
           inputs[index - 1].focus();
+        }
+      });
+
+      input.addEventListener('paste', (e) => {
+        e.preventDefault();
+        const pasteData = (e.clipboardData || window.clipboardData).getData('text').replace(/\D/g, '');
+        if (pasteData) {
+          prefillPin(containerId, pasteData);
         }
       });
     });
@@ -168,56 +182,58 @@ document.addEventListener('DOMContentLoaded', () => {
   function prefillPin(containerId, value) {
     if (!value) return;
     const inputs = document.querySelectorAll(`#${containerId} .pin-digit`);
-    const chars = value.split('');
+    const chars = value.toString().split('');
     inputs.forEach((input, i) => {
       if (chars[i]) input.value = chars[i];
     });
+    const lastIndex = Math.min(chars.length, inputs.length) - 1;
+    if (inputs[lastIndex]) inputs[lastIndex].focus();
   }
 
   // --------------------------------------------------------------------------
   // USER PROFILE & DASHBOARD RENDERER
   // --------------------------------------------------------------------------
-  function renderUserDashboard(user) {
+  function renderUserDashboard(user, isNewRegistration = false) {
     if (!user) return;
 
     authCard.classList.add('hidden');
     dashboardCard.classList.remove('hidden');
 
-    dashUserName.textContent = user.fullName || 'User';
-    dashUserEmail.textContent = user.email || 'N/A';
-    dashUserPhone.textContent = user.phoneNumber || 'Not linked';
-    dashUserProvider.textContent = (user.authProvider || 'Email').toUpperCase();
-    dashUserRole.textContent = user.role || 'User';
+    if (dashUserName) dashUserName.textContent = user.fullName || 'User';
+
+    const subtextEl = document.getElementById('dash-status-subtext');
+    if (subtextEl) {
+      subtextEl.textContent = isNewRegistration 
+        ? 'Your account is created successfully' 
+        : 'You are signed in to PulseAuth';
+    }
+    if (dashUserEmail) dashUserEmail.textContent = user.email || 'N/A';
+    if (dashUserPhone) dashUserPhone.textContent = user.phoneNumber || 'Not linked';
+    if (dashUserProvider) dashUserProvider.textContent = (user.authProvider || 'Email').toUpperCase();
+    if (dashUserRole) dashUserRole.textContent = user.role || 'User';
 
     const isVerified = user.isEmailVerified || user.isPhoneVerified || user.authProvider === 'google';
-    dashUserVerified.textContent = isVerified ? 'Verified' : 'Unverified';
-    dashUserVerified.className = `dash-val ${isVerified ? 'status-verified' : ''}`;
+    if (dashUserVerified) {
+      dashUserVerified.textContent = isVerified ? 'Verified' : 'Unverified';
+      dashUserVerified.className = `dash-val ${isVerified ? 'status-verified' : ''}`;
+    }
 
-    const names = (user.fullName || 'U').split(' ');
-    const initials = names.length > 1 
-      ? (names[0][0] + names[1][0]).toUpperCase() 
-      : names[0][0].toUpperCase();
-    avatarInitials.textContent = initials;
-  }
-
-  async function checkAuthStatus() {
-    try {
-      const response = await fetch(`${API_BASE}/profile`, {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include'
-      });
-
-      const data = await response.json();
-      if (data.success && data.user) {
-        renderUserDashboard(data.user);
-      }
-    } catch (err) {
-      // User is unauthenticated, stay on login card
+    if (avatarInitials) {
+      const names = (user.fullName || 'U').split(' ');
+      const initials = names.length > 1 
+        ? (names[0][0] + names[1][0]).toUpperCase() 
+        : names[0][0].toUpperCase();
+      avatarInitials.textContent = initials;
     }
   }
 
-  // Check auth status on page load
+  async function checkAuthStatus() {
+    // Keep user on Login / Create Account form by default on fresh page load
+    if (authCard) authCard.classList.remove('hidden');
+    if (dashboardCard) dashboardCard.classList.add('hidden');
+  }
+
+  // Set default view on page load
   checkAuthStatus();
 
   // --------------------------------------------------------------------------
@@ -283,12 +299,14 @@ document.addEventListener('DOMContentLoaded', () => {
       // Attempt Real Firebase SMS Dispatch for Mobile Phone Numbers
       if (!isEmail && window.firebaseAuth && window.signInWithPhoneNumber) {
         try {
-          if (!firebaseRecaptchaVerifier) {
-            firebaseRecaptchaVerifier = new window.RecaptchaVerifier(window.firebaseAuth, 'recaptcha-container', {
-              'size': 'invisible',
-              'callback': () => {}
-            });
+          if (firebaseRecaptchaVerifier) {
+            try { firebaseRecaptchaVerifier.clear(); } catch(e) {}
+            firebaseRecaptchaVerifier = null;
           }
+          firebaseRecaptchaVerifier = new window.RecaptchaVerifier(window.firebaseAuth, 'recaptcha-container', {
+            'size': 'invisible',
+            'callback': () => {}
+          });
 
           const confirmationResult = await window.signInWithPhoneNumber(window.firebaseAuth, phoneFormatted, firebaseRecaptchaVerifier);
           window.confirmationResult = confirmationResult;
@@ -296,11 +314,16 @@ document.addEventListener('DOMContentLoaded', () => {
           regOtpSection.classList.remove('hidden');
           sendRegOtpBtn.innerHTML = '<i class="fa-solid fa-rotate-right"></i> Resend OTP';
           document.querySelectorAll('#reg-pin-container .pin-digit').forEach(input => input.value = '');
-          showToast(`📱 Real SMS OTP sent directly to ${phoneFormatted}! Check your mobile.`, 'success');
+          const firstPin = document.querySelector('#reg-pin-container .pin-digit');
+          if (firstPin) firstPin.focus();
+          showToast(`📱 Real SMS OTP sent to ${phoneFormatted}! Please check your mobile messages.`, 'success');
           return;
         } catch (fbErr) {
-          console.warn('Firebase SMS dispatch warning (proceeding to server OTP fallback):', fbErr.message);
-          // Seamlessly fall through to backend API dispatch below!
+          console.error('Firebase SMS Dispatch Error:', fbErr);
+          showToast(`Firebase SMS Error: ${fbErr.message || fbErr.code}`, 'error');
+          sendRegOtpBtn.disabled = false;
+          sendRegOtpBtn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Send OTP';
+          return;
         }
       }
 
@@ -320,12 +343,13 @@ document.addEventListener('DOMContentLoaded', () => {
           sendRegOtpBtn.innerHTML = '<i class="fa-solid fa-rotate-right"></i> Resend OTP';
 
           document.querySelectorAll('#reg-pin-container .pin-digit').forEach(input => input.value = '');
+          const firstPin = document.querySelector('#reg-pin-container .pin-digit');
+          if (firstPin) firstPin.focus();
 
-          if (data.devOtp) {
-            showToast(`[OTP Code]: ${data.devOtp} (Enter this in the boxes below)`, 'info');
-          } else {
-            showToast(`OTP code sent successfully to ${target}`, 'success');
-          }
+          const successMsg = isEmail 
+            ? `📧 OTP code sent to ${target}! Please check your email inbox.`
+            : `📱 OTP code sent successfully to ${target}!`;
+          showToast(successMsg, 'success');
         } else {
           showToast(data.message || 'Failed to send OTP code', 'error');
           sendRegOtpBtn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Send OTP';
@@ -347,6 +371,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const otp = getPinValue('reg-pin-container');
     const password = document.getElementById('reg-password').value;
     const repeatPassword = document.getElementById('reg-repeat-password').value;
+    const submitBtn = registerForm.querySelector('button[type="submit"]');
 
     if (!target) {
       showToast('Please enter your Email Address or Phone Number', 'error');
@@ -369,7 +394,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (password.length < 6) {
-      showToast('Password must be at least 6 characters long', 'error');
+      showToast('Password is too weak. Please use a stronger password.', 'error');
       return;
     }
 
@@ -378,55 +403,103 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    let isFirebaseVerified = false;
-
-    if (window.confirmationResult) {
-      try {
-        await window.confirmationResult.confirm(otp);
-        isFirebaseVerified = true;
-        showToast('📱 SMS OTP verified successfully via Firebase!', 'success');
-      } catch (fbConfirmErr) {
-        showToast('Invalid SMS OTP code. Please check your mobile messages.', 'error');
-        return;
-      }
+    // Disable button & show processing state
+    let originalBtnText = '';
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      originalBtnText = submitBtn.innerHTML;
+      submitBtn.innerHTML = '<span>Creating account...</span> <i class="fa-solid fa-spinner fa-spin"></i>';
     }
 
+    console.log("Creating account...");
+
     try {
-      let data;
-      const contentType = res.headers.get('content-type') || '';
-      if (contentType.includes('application/json')) {
-        data = await res.json();
+      let isFirebaseVerified = false;
+      const isEmailInput = target.includes('@');
+
+      if (isEmailInput) {
+        // Firebase Email/Password Authentication
+        const auth = window.firebaseAuth;
+        if (!auth || !window.createUserWithEmailAndPassword) {
+          throw new Error('Firebase Auth SDK not ready');
+        }
+
+        const userCredential = await window.createUserWithEmailAndPassword(auth, target, password);
+        console.log("Account created successfully", userCredential.user.uid);
+        isFirebaseVerified = true;
       } else {
-        const text = await res.text();
-        console.warn('Non-JSON response:', text);
-        showToast('Account verification processed! Checking status...', 'info');
-        setTimeout(checkAuthStatus, 500);
-        return;
+        // Firebase Phone Authentication
+        if (window.confirmationResult) {
+          await window.confirmationResult.confirm(otp);
+          console.log("Account created successfully");
+          isFirebaseVerified = true;
+        }
       }
+
+      // Backend Database Registration (ONLY reached if Firebase user creation succeeds)
+      const res = await fetch(`${API_BASE}/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          fullName,
+          emailOrPhone: target,
+          otp,
+          password,
+          isFirebaseVerified
+        })
+      });
+
+      const data = await res.json();
 
       if (data && data.success) {
         showToast('🎉 Account Created Successfully!', 'success');
-
-        const successModal = document.getElementById('account-success-modal');
-        const nameDisplay = document.getElementById('success-user-name-display');
-        if (nameDisplay && data.user) {
-          nameDisplay.textContent = data.user.fullName || data.user.email || data.user.phoneNumber || 'User';
-        }
-        window.pendingCreatedUser = data.user;
-        if (successModal) {
-          successModal.classList.remove('hidden');
-        } else {
-          renderUserDashboard(data.user);
-        }
+        renderUserDashboard(data.user, true);
       } else {
         showToast((data && data.message) || 'Registration failed', 'error');
       }
-    } catch (err) {
-      console.error('Registration fetch error:', err);
-      showToast('Registration complete! Refreshing...', 'info');
-      setTimeout(checkAuthStatus, 500);
+
+    } catch (fbErr) {
+      const errorCode = fbErr.code || fbErr.name || '';
+      const errorMessage = fbErr.message || '';
+
+      console.error("Firebase Auth Error:", errorCode, errorMessage);
+
+      if (errorCode === 'auth/email-already-in-use') {
+        const modal = document.getElementById('email-exists-modal');
+        if (modal) {
+          modal.classList.remove('hidden');
+        } else {
+          showToast('Account already exists. This email is already registered. Please login instead.', 'error');
+        }
+      } else if (errorCode === 'auth/invalid-email') {
+        showToast('Please enter a valid email address.', 'error');
+      } else if (errorCode === 'auth/weak-password') {
+        showToast('Password is too weak. Please use a stronger password.', 'error');
+      } else {
+        showToast('Unable to create account. Please try again.', 'error');
+      }
+    } finally {
+      // Re-enable submit button
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        if (originalBtnText) submitBtn.innerHTML = originalBtnText;
+      }
     }
   });
+
+  // Close Email Exists Modal Handler
+  const closeEmailExistsModalBtn = document.getElementById('close-email-exists-modal');
+  const emailExistsOkBtn = document.getElementById('email-exists-ok-btn');
+  const emailExistsModal = document.getElementById('email-exists-modal');
+
+  const closeEmailExistsModalHandler = () => {
+    if (emailExistsModal) emailExistsModal.classList.add('hidden');
+    switchView('login-tab');
+  };
+
+  if (closeEmailExistsModalBtn) closeEmailExistsModalBtn.addEventListener('click', closeEmailExistsModalHandler);
+  if (emailExistsOkBtn) emailExistsOkBtn.addEventListener('click', closeEmailExistsModalHandler);
 
   // Account Success Modal Actions
   const continueBtn = document.getElementById('continue-to-dashboard-btn');
@@ -446,267 +519,320 @@ document.addEventListener('DOMContentLoaded', () => {
   if (closeSuccessBtn) closeSuccessBtn.addEventListener('click', handleGoToDashboard);
 
   // 3. VERIFY REGISTRATION OTP HANDLER
-  emailOtpForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const otp = getPinValue('email-pin-container');
+  if (emailOtpForm) {
+    emailOtpForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const otp = getPinValue('email-pin-container');
 
-    if (otp.length < 4) {
-      showToast('Please enter the full 6-digit OTP code', 'error');
-      return;
-    }
-
-    try {
-      const res = await fetch(`${API_BASE}/verify-email-otp`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ emailOrPhone: currentEmailForOtp, otp })
-      });
-
-      const data = await res.json();
-
-      if (data.success) {
-        emailOtpModal.classList.add('hidden');
-        showToast('Account verified successfully!', 'success');
-        renderUserDashboard(data.user);
-      } else {
-        showToast(data.message || 'Invalid or expired OTP code', 'error');
+      if (otp.length < 4) {
+        showToast('Please enter the full 6-digit OTP code', 'error');
+        return;
       }
-    } catch (err) {
-      showToast('Failed to verify OTP code', 'error');
-    }
-  });
 
-  // 4. PHONE OTP - STEP 1 (Send OTP)
-  phoneStep1Form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const phoneNumber = document.getElementById('phone-number-input').value.trim();
+      try {
+        const res = await fetch(`${API_BASE}/verify-email-otp`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ emailOrPhone: currentEmailForOtp, otp })
+        });
 
-    if (!phoneNumber) {
-      showToast('Please enter your mobile phone number', 'error');
-      return;
-    }
+        const data = await res.json();
 
-    try {
-      const res = await fetch(`${API_BASE}/send-phone-otp`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ phoneNumber })
-      });
-
-      const data = await res.json();
-
-      if (data.success) {
-        currentPhoneForOtp = phoneNumber;
-        document.getElementById('sent-phone-display').textContent = phoneNumber;
-        
-        phoneStep1Form.classList.add('hidden');
-        phoneStep2Form.classList.remove('hidden');
-
-        if (data.devOtp) {
-          prefillPin('phone-pin-container', data.devOtp);
-          showToast(`[DEV MODE] Simulated OTP: ${data.devOtp}`, 'info');
+        if (data.success) {
+          if (emailOtpModal) emailOtpModal.classList.add('hidden');
+          showToast('Account verified successfully!', 'success');
+          renderUserDashboard(data.user);
         } else {
-          showToast('OTP sent to your phone!', 'success');
+          showToast(data.message || 'Invalid or expired OTP code', 'error');
         }
-      } else {
-        showToast(data.message || 'Failed to send OTP', 'error');
+      } catch (err) {
+        showToast('Failed to verify OTP code', 'error');
       }
-    } catch (err) {
-      showToast('Server error while sending phone OTP', 'error');
-    }
-  });
+    });
+  }
 
-  // 5. PHONE OTP - STEP 2 (Verify & Login)
-  phoneStep2Form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const otp = getPinValue('phone-pin-container');
+  // 4. GOOGLE AUTHENTICATION WITH FIREBASE
+  const handleGoogleLogin = async (e) => {
+    if (e) e.preventDefault();
 
-    if (!otp) {
-      showToast('Please enter the OTP code', 'error');
-      return;
+    const targetBtn = e.currentTarget || document.getElementById('google-login-btn');
+    let originalText = '';
+    if (targetBtn) {
+      targetBtn.disabled = true;
+      originalText = targetBtn.innerHTML;
+      targetBtn.innerHTML = '<i class="fa-brands fa-google"></i> <span>Connecting to Google...</span>';
     }
 
     try {
-      const res = await fetch(`${API_BASE}/verify-phone-otp`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ phoneNumber: currentPhoneForOtp, otp })
-      });
-
-      const data = await res.json();
-
-      if (data.success) {
-        showToast('Phone verification successful!', 'success');
-        renderUserDashboard(data.user);
-      } else {
-        showToast(data.message || 'Invalid phone OTP code', 'error');
+      const auth = window.firebaseAuth;
+      if (!auth || !window.GoogleAuthProvider || !window.signInWithPopup) {
+        showToast('Firebase Google Auth SDK is loading. Please try again.', 'error');
+        return;
       }
-    } catch (err) {
-      showToast('Error verifying phone OTP', 'error');
-    }
-  });
 
-  document.getElementById('change-phone-btn').addEventListener('click', () => {
-    phoneStep2Form.classList.add('hidden');
-    phoneStep1Form.classList.remove('hidden');
-  });
+      const provider = new window.GoogleAuthProvider();
+      const result = await window.signInWithPopup(auth, provider);
+      const user = result.user;
 
-  document.getElementById('resend-phone-otp-btn').addEventListener('click', () => {
-    phoneStep1Form.dispatchEvent(new Event('submit'));
-  });
+      const uid = user.uid;
+      const displayName = user.displayName || 'Google User';
+      const email = user.email;
+      const photoURL = user.photoURL || '';
 
-  // 6. GOOGLE AUTHENTICATION (Simulated / Integration)
-  const handleGoogleLogin = async () => {
-    const demoEmail = `google_user_${Math.floor(Math.random() * 1000)}@example.com`;
-    const demoName = 'Google Authenticated User';
+      console.log("Google Sign-In successful", uid, email);
 
-    try {
+      // Register or Log In user via backend API
       const res = await fetch(`${API_BASE}/google-login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          email: demoEmail,
-          fullName: demoName,
-          googleId: `g_id_${Date.now()}`
+          email,
+          fullName: displayName,
+          googleId: uid,
+          photoURL
         })
       });
 
       const data = await res.json();
-      if (data.success) {
-        showToast('Google Sign-in successful!', 'success');
+      if (data && data.success) {
+        showToast('🎉 Google Sign-In successful!', 'success');
         renderUserDashboard(data.user);
       } else {
-        showToast(data.message || 'Google Sign-in failed', 'error');
+        showToast((data && data.message) || 'Google sign-in failed. Please try again.', 'error');
       }
     } catch (err) {
-      showToast('Google Auth server error', 'error');
+      const errorCode = err.code || err.name || '';
+      const errorMessage = err.message || '';
+
+      console.error("Firebase Google Auth Error:", errorCode, errorMessage);
+
+      if (errorCode === 'auth/popup-closed-by-user') {
+        showToast('Google sign-in was cancelled.', 'info');
+      } else if (errorCode === 'auth/popup-blocked') {
+        showToast('Please allow popups in your browser and try again.', 'error');
+      } else if (errorCode === 'auth/account-exists-with-different-credential') {
+        showToast('An account already exists with a different sign-in method. Please use that method to sign in.', 'error');
+      } else if (errorCode === 'auth/unauthorized-domain') {
+        showToast('Authorized domain missing in Firebase Console > Auth Settings.', 'error');
+      } else {
+        showToast('Google sign-in failed. Please try again.', 'error');
+      }
+    } finally {
+      if (targetBtn) {
+        targetBtn.disabled = false;
+        if (originalText) targetBtn.innerHTML = originalText;
+      }
     }
   };
 
-  document.getElementById('google-login-btn').addEventListener('click', handleGoogleLogin);
-  document.getElementById('google-register-btn').addEventListener('click', handleGoogleLogin);
+  const googleLoginBtn = document.getElementById('google-login-btn');
+  const googleRegisterBtn = document.getElementById('google-register-btn');
+  if (googleLoginBtn) googleLoginBtn.addEventListener('click', handleGoogleLogin);
+  if (googleRegisterBtn) googleRegisterBtn.addEventListener('click', handleGoogleLogin);
 
-  // 7. FORGOT PASSWORD MODAL HANDLERS
-  forgotPasswordTrigger.addEventListener('click', (e) => {
-    e.preventDefault();
-    forgotModal.classList.remove('hidden');
-  });
+  // Check for Password Reset Token in URL Query Parameters
+  const urlParams = new URLSearchParams(window.location.search);
+  const tokenFromUrl = urlParams.get('resetToken');
+  const emailFromUrl = urlParams.get('email');
 
-  closeForgotModalBtn.addEventListener('click', () => {
-    forgotModal.classList.add('hidden');
-  });
+  if (tokenFromUrl) {
+    currentResetToken = tokenFromUrl;
+    if (emailFromUrl) currentForgotEmail = emailFromUrl;
 
-  closeEmailOtpModalBtn.addEventListener('click', () => {
-    emailOtpModal.classList.add('hidden');
-  });
+    if (forgotModal) forgotModal.classList.remove('hidden');
+    const targetDisplay = document.getElementById('forgot-modal-target-email');
+    if (targetDisplay) targetDisplay.textContent = emailFromUrl || 'your account';
 
-  // Forgot Password - Step 1
-  forgotStep1Form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const email = document.getElementById('forgot-email-input').value.trim();
+    const step1 = document.getElementById('forgot-step-1');
+    const stepEmailSent = document.getElementById('forgot-step-email-sent');
+    const step2 = document.getElementById('forgot-step-2');
+    const otpContainer = document.getElementById('forgot-otp-container');
 
-    if (!email) {
-      showToast('Please enter your email', 'error');
-      return;
-    }
+    if (step1) step1.classList.add('hidden');
+    if (stepEmailSent) stepEmailSent.classList.add('hidden');
+    if (otpContainer) otpContainer.classList.add('hidden');
+    if (step2) step2.classList.remove('hidden');
 
-    try {
-      const res = await fetch(`${API_BASE}/forgot-password`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ email })
-      });
+    showToast('🔑 Reset link verified! Please enter your new password below.', 'info');
+  }
 
-      const data = await res.json();
+  // 5. FORGOT PASSWORD MODAL HANDLERS
+  if (forgotPasswordTrigger) {
+    forgotPasswordTrigger.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (forgotModal) forgotModal.classList.remove('hidden');
+    });
+  }
 
-      if (data.success) {
-        currentForgotEmail = email;
-        document.getElementById('forgot-modal-target-email').textContent = email;
-        document.getElementById('forgot-step-1').classList.add('hidden');
-        document.getElementById('forgot-step-2').classList.remove('hidden');
-        showToast('Reset OTP code sent to your email!', 'success');
-      } else {
-        showToast(data.message || 'Failed to request reset OTP', 'error');
+  if (closeForgotModalBtn) {
+    closeForgotModalBtn.addEventListener('click', () => {
+      if (forgotModal) forgotModal.classList.add('hidden');
+    });
+  }
+
+  const closeEmailSentBtn = document.getElementById('close-email-sent-btn');
+  if (closeEmailSentBtn) {
+    closeEmailSentBtn.addEventListener('click', () => {
+      if (forgotModal) forgotModal.classList.add('hidden');
+    });
+  }
+
+  if (closeEmailOtpModalBtn) {
+    closeEmailOtpModalBtn.addEventListener('click', () => {
+      if (emailOtpModal) emailOtpModal.classList.add('hidden');
+    });
+  }
+
+  // Forgot Password - Step 1 (Send Link / OTP)
+  if (forgotStep1Form) {
+    forgotStep1Form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const target = document.getElementById('forgot-email-input').value.trim();
+
+      if (!target) {
+        showToast('Please enter your Email Address or Phone Number', 'error');
+        return;
       }
-    } catch (err) {
-      showToast('Server error while requesting password reset', 'error');
-    }
-  });
 
-  // Forgot Password - Step 2
-  forgotStep2Form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const otp = getPinValue('forgot-pin-container');
-    const newPassword = document.getElementById('forgot-new-password').value;
+      try {
+        const res = await fetch(`${API_BASE}/forgot-password`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ emailOrPhone: target, email: target })
+        });
 
-    if (!otp || !newPassword) {
-      showToast('Please enter both the OTP and your new password', 'error');
-      return;
-    }
+        const data = await res.json();
 
-    if (newPassword.length < 6) {
-      showToast('New password must be at least 6 characters', 'error');
-      return;
-    }
+        if (data.success) {
+          currentForgotEmail = target;
+          const isEmailInput = target.includes('@');
 
-    try {
-      const res = await fetch(`${API_BASE}/reset-password`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          email: currentForgotEmail,
-          otp,
-          newPassword
-        })
-      });
+          const step1 = document.getElementById('forgot-step-1');
+          const stepEmailSent = document.getElementById('forgot-step-email-sent');
+          const step2 = document.getElementById('forgot-step-2');
+          const otpContainer = document.getElementById('forgot-otp-container');
 
-      const data = await res.json();
-
-      if (data.success) {
-        forgotModal.classList.add('hidden');
-        showToast('Password reset successfully! You can now log in.', 'success');
-        
-        // Reset forms
-        forgotStep1Form.reset();
-        forgotStep2Form.reset();
-        document.getElementById('forgot-step-2').classList.add('hidden');
-        document.getElementById('forgot-step-1').classList.remove('hidden');
-      } else {
-        showToast(data.message || 'Password reset failed', 'error');
+          if (isEmailInput) {
+            // Show Email Sent Confirmation Popup (NO OTP boxes)
+            if (step1) step1.classList.add('hidden');
+            if (step2) step2.classList.add('hidden');
+            document.getElementById('sent-email-display').textContent = target;
+            if (stepEmailSent) stepEmailSent.classList.remove('hidden');
+            showToast('📩 Password reset link sent! Check your email.', 'success');
+          } else {
+            // Show Phone OTP reset view
+            if (step1) step1.classList.add('hidden');
+            if (stepEmailSent) stepEmailSent.classList.add('hidden');
+            if (otpContainer) otpContainer.classList.remove('hidden');
+            document.getElementById('forgot-modal-target-email').textContent = target;
+            if (step2) step2.classList.remove('hidden');
+            showToast(data.message || 'OTP sent to your phone!', 'success');
+          }
+        } else {
+          showToast(data.message || 'Failed to request reset link', 'error');
+        }
+      } catch (err) {
+        showToast('Server error while requesting password reset', 'error');
       }
-    } catch (err) {
-      showToast('Error resetting password', 'error');
-    }
-  });
+    });
+  }
 
-  // 8. LOGOUT HANDLER
-  logoutBtn.addEventListener('click', async () => {
+  // Forgot Password - Step 2 (Reset Password with Token or OTP)
+  if (forgotStep2Form) {
+    forgotStep2Form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const otp = getPinValue('forgot-pin-container');
+      const newPassword = document.getElementById('forgot-new-password').value;
+      const confirmPassword = document.getElementById('forgot-confirm-password') 
+        ? document.getElementById('forgot-confirm-password').value 
+        : newPassword;
+
+      if (!currentResetToken && !otp) {
+        showToast('Please enter the OTP code or open the link from your email', 'error');
+        return;
+      }
+
+      if (!newPassword || newPassword.length < 6) {
+        showToast('New password must be at least 6 characters long', 'error');
+        return;
+      }
+
+      if (newPassword !== confirmPassword) {
+        showToast('Passwords do not match', 'error');
+        return;
+      }
+
+      try {
+        const res = await fetch(`${API_BASE}/reset-password`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            emailOrPhone: currentForgotEmail,
+            email: currentForgotEmail,
+            resetToken: currentResetToken,
+            otp,
+            newPassword
+          })
+        });
+
+        const data = await res.json();
+
+        if (data.success) {
+          if (forgotModal) forgotModal.classList.add('hidden');
+          showToast('🎉 Password reset successfully! You can now log in.', 'success');
+          
+          forgotStep1Form.reset();
+          forgotStep2Form.reset();
+          currentResetToken = null;
+          window.history.replaceState({}, document.title, window.location.pathname);
+
+          const step1 = document.getElementById('forgot-step-1');
+          const stepEmailSent = document.getElementById('forgot-step-email-sent');
+          const step2 = document.getElementById('forgot-step-2');
+          
+          if (stepEmailSent) stepEmailSent.classList.add('hidden');
+          if (step2) step2.classList.add('hidden');
+          if (step1) step1.classList.remove('hidden');
+
+          switchView('login-tab');
+        } else {
+          showToast(data.message || 'Password reset failed', 'error');
+        }
+      } catch (err) {
+        showToast('Error resetting password', 'error');
+      }
+    });
+  }
+
+  // 6. LOGOUT HANDLER (Guaranteed Return to Main Page)
+  window.handleGlobalLogout = async function(e) {
+    if (e) e.preventDefault();
     try {
-      const res = await fetch(`${API_BASE}/logout`, {
+      await fetch(`${API_BASE}/logout`, {
         method: 'POST',
         credentials: 'include'
       });
-
-      const data = await res.json();
-      if (data.success) {
-        showToast('Logged out successfully', 'info');
-        dashboardCard.classList.add('hidden');
-        authCard.classList.remove('hidden');
-      }
     } catch (err) {
-      showToast('Error logging out', 'error');
+      console.warn('Logout API exception:', err);
     }
-  });
+    document.cookie = "jwt=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+    if (dashboardCard) dashboardCard.classList.add('hidden');
+    if (authCard) authCard.classList.remove('hidden');
+    switchView('login-tab');
+    window.location.reload();
+  };
 
-  refreshProfileBtn.addEventListener('click', () => {
-    checkAuthStatus();
-    showToast('Profile refreshed!', 'info');
-  });
+  if (logoutBtn) logoutBtn.addEventListener('click', window.handleGlobalLogout);
+
+  if (refreshProfileBtn) {
+    refreshProfileBtn.addEventListener('click', () => {
+      checkAuthStatus();
+      showToast('Profile refreshed!', 'info');
+    });
+  }
 
 });

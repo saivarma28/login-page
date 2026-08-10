@@ -48,19 +48,19 @@ const verifyPhoneOtpValidation = [
 ];
 
 const forgotPasswordValidation = [
-  body('email').trim().isEmail().withMessage('Valid email is required'),
+  body('emailOrPhone').optional().trim(),
+  body('email').optional().trim(),
   validate,
 ];
 
 const verifyForgotOtpValidation = [
-  body('email').trim().isEmail().withMessage('Valid email is required'),
+  body('email').optional().trim(),
+  body('emailOrPhone').optional().trim(),
   body('otp').trim().isLength({ min: 4, max: 6 }).withMessage('Valid OTP is required'),
   validate,
 ];
 
 const resetPasswordValidation = [
-  body('email').trim().isEmail().withMessage('Valid email is required'),
-  body('otp').trim().notEmpty().withMessage('OTP is required'),
   body('newPassword')
     .isLength({ min: 6 })
     .withMessage('New password must be at least 6 characters long'),

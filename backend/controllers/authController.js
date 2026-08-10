@@ -3,6 +3,7 @@ const User = require('../models/userModel');
 const generateToken = require('../utils/generateToken');
 const generateOtp = require('../utils/generateOtp');
 const sendEmail = require('../utils/sendEmail');
+const jwt = require('jsonwebtoken');
 const { OAuth2Client } = require('google-auth-library');
 const { admin } = require('../config/firebase');
 
@@ -88,10 +89,11 @@ const sendRegisterOtp = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: `OTP code sent successfully to ${inputTarget}`,
+      message: isEmailInput 
+        ? `OTP code sent successfully to your email: ${inputTarget}. Please check your inbox!` 
+        : `OTP code sent successfully to ${inputTarget}. Please check your mobile messages!`,
       target: inputTarget,
       isEmail: isEmailInput,
-      devOtp: process.env.NODE_ENV === 'development' ? otp : undefined,
     });
   } catch (error) {
     console.error('Send OTP Error:', error);
@@ -128,25 +130,13 @@ const registerUser = async (req, res) => {
 
     const defaultName = fullName || (isEmailInput ? userEmail.split('@')[0] : `User_${(userPhone || '1234').slice(-4)}`);
 
-    if (user) {
-      if (!isFirebaseVerified && otp) {
-        const activeOtp = user.emailOTP || user.phoneOTP;
-        if (activeOtp && activeOtp !== otp && new Date() <= new Date(user.otpExpiry)) {
-          return res.status(400).json({ success: false, message: 'Invalid or expired OTP code' });
-        }
+    if (!user) {
+      if (!isFirebaseVerified) {
+        return res.status(400).json({
+          success: false,
+          message: 'OTP verification required. Please click "Send OTP" first.',
+        });
       }
-
-      if (password) {
-        user.password = password;
-      }
-      user.fullName = fullName || user.fullName;
-      user.isEmailVerified = true;
-      user.isPhoneVerified = true;
-      user.emailOTP = null;
-      user.phoneOTP = null;
-      user.otpExpiry = null;
-      await user.save();
-    } else {
       user = await User.create({
         fullName: defaultName,
         email: userEmail,
@@ -154,11 +144,32 @@ const registerUser = async (req, res) => {
         password: password || 'DefaultPass123!',
         role: role && ['User', 'Admin'].includes(role) ? role : 'User',
         authProvider: isEmailInput ? 'email' : 'phone',
-        isEmailVerified: true,
-        isPhoneVerified: true,
+        isEmailVerified: isEmailInput,
+        isPhoneVerified: !isEmailInput,
         emailOTP: null,
         phoneOTP: null,
       });
+    } else {
+      if (!isFirebaseVerified) {
+        const activeOtp = isEmailInput ? user.emailOTP : (user.phoneOTP || user.emailOTP);
+        if (!activeOtp || activeOtp !== otp) {
+          return res.status(400).json({ success: false, message: 'Invalid OTP code' });
+        }
+        if (user.otpExpiry && new Date() > new Date(user.otpExpiry)) {
+          return res.status(400).json({ success: false, message: 'OTP has expired. Please request a new one.' });
+        }
+      }
+
+      if (password) {
+        user.password = password;
+      }
+      user.fullName = fullName || user.fullName;
+      if (isEmailInput) user.isEmailVerified = true;
+      if (!isEmailInput) user.isPhoneVerified = true;
+      user.emailOTP = null;
+      user.phoneOTP = null;
+      user.otpExpiry = null;
+      await user.save();
     }
 
     const token = generateToken(res, user.id);
@@ -466,45 +477,88 @@ const verifyPhoneOtp = async (req, res, next) => {
 };
 
 /**
- * @desc    Forgot Password - Send OTP to Email
+ * @desc    Forgot Password - Send Reset Password Link / OTP
  * @route   POST /api/auth/forgot-password
  * @access  Public
  */
 const forgotPassword = async (req, res, next) => {
   try {
-    const { email } = req.body;
+    const { email, emailOrPhone } = req.body;
+    const identifier = (emailOrPhone || email || '').trim();
 
-    const user = await User.findOne({ where: { email } });
+    if (!identifier) {
+      return res.status(400).json({ success: false, message: 'Please enter your Email Address or Phone Number' });
+    }
+
+    const isEmailInput = identifier.includes('@');
+    const whereConditions = [];
+    if (isEmailInput) {
+      whereConditions.push({ email: identifier.toLowerCase() });
+    } else {
+      getPhoneVariants(identifier).forEach(p => whereConditions.push({ phoneNumber: p }));
+    }
+
+    const user = await User.findOne({ where: { [Op.or]: whereConditions } });
     if (!user) {
-      return res.status(404).json({ success: false, message: 'User with this email does not exist' });
+      return res.status(404).json({ success: false, message: 'No account found with this Email Address or Phone Number' });
     }
 
     const otp = generateOtp();
+    const resetToken = jwt.sign(
+      { id: user.id, email: user.email || identifier },
+      process.env.JWT_SECRET || 'login_page_jwt_secret_key_2026_dev_mode',
+      { expiresIn: '15m' }
+    );
+
     await user.update({
-      emailOTP: otp,
-      otpExpiry: new Date(Date.now() + 10 * 60 * 1000),
+      emailOTP: isEmailInput ? otp : user.emailOTP,
+      phoneOTP: !isEmailInput ? otp : user.phoneOTP,
+      otpExpiry: new Date(Date.now() + 15 * 60 * 1000),
     });
 
-    await sendEmail({
-      email: user.email,
-      subject: 'Login Page - Reset Password OTP',
-      message: `Hello ${user.fullName},\n\nYour OTP for resetting your password is: ${otp}\n\nThis OTP is valid for 10 minutes.`,
-      html: `
-        <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
-          <h2 style="color: #EF4444;">Password Reset Request</h2>
-          <p>Hello <strong>${user.fullName}</strong>,</p>
-          <p>We received a request to reset your password. Use the OTP below to proceed:</p>
-          <div style="background: #F3F4F6; padding: 15px; text-align: center; border-radius: 8px; margin: 20px 0;">
-            <span style="font-size: 28px; font-weight: bold; letter-spacing: 5px; color: #EF4444;">${otp}</span>
+    if (user.email) {
+      const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'http';
+      const host = req.get('host') || 'localhost:5000';
+      const resetUrl = `${protocol}://${host}/?resetToken=${resetToken}&email=${encodeURIComponent(user.email)}`;
+
+      await sendEmail({
+        email: user.email,
+        subject: 'PulseAuth - Password Reset Link',
+        message: `Hello ${user.fullName},\n\nClick the link below to reset your password:\n${resetUrl}\n\nAlternatively, your 6-digit OTP code is: ${otp}\n\nThis link expires in 15 minutes.`,
+        html: `
+          <div style="font-family: Arial, sans-serif; padding: 25px; color: #2D3748; max-width: 520px; margin: 0 auto; border: 1px solid #E2E8F0; border-radius: 12px; background: #ffffff;">
+            <div style="text-align: center; margin-bottom: 25px;">
+              <h2 style="color: #FF6B35; margin-bottom: 8px;">Reset Your Password</h2>
+              <p style="color: #718096; font-size: 14px;">We received a password reset request for your PulseAuth account.</p>
+            </div>
+            
+            <p style="font-size: 15px;">Hello <strong>${user.fullName}</strong>,</p>
+            <p style="font-size: 14px; color: #4A5568;">Click the button below to change your password directly:</p>
+
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${resetUrl}" target="_blank" style="background: linear-gradient(135deg, #FF6B35 0%, #FF8C42 100%); color: #ffffff; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 15px; display: inline-block; box-shadow: 0 8px 20px -4px rgba(255, 107, 53, 0.4);">Reset Password Now</a>
+            </div>
+
+            <p style="font-size: 13px; color: #A0AEC0;">Or copy and paste this link into your browser:</p>
+            <p style="font-size: 12px; color: #FF6B35; word-break: break-all;"><a href="${resetUrl}" style="color: #FF6B35;">${resetUrl}</a></p>
+
+            <hr style="border: none; border-top: 1px solid #EDF2F7; margin: 25px 0;" />
+
+            <p style="font-size: 13px; color: #718096;">Alternatively, you can manually enter this OTP code: <strong style="color: #1A202C; letter-spacing: 2px; font-size: 16px;">${otp}</strong></p>
+            <p style="font-size: 12px; color: #A0AEC0; margin-top: 15px;">This link and OTP will expire in 15 minutes.</p>
           </div>
-          <p>If you did not request this, please ignore this email.</p>
-        </div>
-      `,
-    });
+        `,
+      });
+    } else {
+      console.log(`\n[SMS SIMULATOR] Password reset OTP ${otp} for phone: ${user.phoneNumber}\n`);
+    }
 
     res.status(200).json({
       success: true,
-      message: 'Password reset OTP has been sent to your email address',
+      message: user.email 
+        ? `Password reset link sent successfully to ${user.email}! Please check your email inbox.` 
+        : `Password reset OTP sent to ${user.phoneNumber}`,
+      target: identifier,
     });
   } catch (error) {
     next(error);
@@ -518,14 +572,24 @@ const forgotPassword = async (req, res, next) => {
  */
 const verifyForgotOtp = async (req, res, next) => {
   try {
-    const { email, otp } = req.body;
+    const { email, emailOrPhone, otp } = req.body;
+    const identifier = (emailOrPhone || email || '').trim();
 
-    const user = await User.findOne({ where: { email } });
+    const isEmailInput = identifier.includes('@');
+    const whereConditions = [];
+    if (isEmailInput) {
+      whereConditions.push({ email: identifier.toLowerCase() });
+    } else {
+      getPhoneVariants(identifier).forEach(p => whereConditions.push({ phoneNumber: p }));
+    }
+
+    const user = await User.findOne({ where: { [Op.or]: whereConditions } });
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
-    if (!user.emailOTP || user.emailOTP !== otp) {
+    const activeOtp = user.emailOTP || user.phoneOTP;
+    if (!activeOtp || activeOtp !== otp) {
       return res.status(400).json({ success: false, message: 'Invalid OTP code' });
     }
 
@@ -543,30 +607,63 @@ const verifyForgotOtp = async (req, res, next) => {
 };
 
 /**
- * @desc    Reset Password with OTP
+ * @desc    Reset Password with Link / Token or OTP
  * @route   POST /api/auth/reset-password
  * @access  Public
  */
 const resetPassword = async (req, res, next) => {
   try {
-    const { email, otp, newPassword } = req.body;
+    const { email, emailOrPhone, otp, resetToken, newPassword } = req.body;
+    const identifier = (emailOrPhone || email || '').trim();
 
-    const user = await User.findOne({ where: { email } });
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).json({ success: false, message: 'Password must be at least 6 characters long' });
+    }
+
+    let user = null;
+
+    if (resetToken) {
+      try {
+        const decoded = jwt.verify(
+          resetToken,
+          process.env.JWT_SECRET || 'login_page_jwt_secret_key_2026_dev_mode'
+        );
+        user = await User.findByPk(decoded.id);
+      } catch (err) {
+        return res.status(400).json({ success: false, message: 'Invalid or expired password reset link. Please request a new link.' });
+      }
+    }
+
+    if (!user && identifier) {
+      const isEmailInput = identifier.includes('@');
+      const whereConditions = [];
+      if (isEmailInput) {
+        whereConditions.push({ email: identifier.toLowerCase() });
+      } else {
+        getPhoneVariants(identifier).forEach(p => whereConditions.push({ phoneNumber: p }));
+      }
+      user = await User.findOne({ where: { [Op.or]: whereConditions } });
+    }
+
     if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found' });
+      return res.status(404).json({ success: false, message: 'User account not found' });
     }
 
-    if (!user.emailOTP || user.emailOTP !== otp) {
-      return res.status(400).json({ success: false, message: 'Invalid OTP code' });
-    }
+    if (!resetToken) {
+      const activeOtp = user.emailOTP || user.phoneOTP;
+      if (!activeOtp || activeOtp !== otp) {
+        return res.status(400).json({ success: false, message: 'Invalid OTP code' });
+      }
 
-    if (new Date() > new Date(user.otpExpiry)) {
-      return res.status(400).json({ success: false, message: 'OTP has expired' });
+      if (new Date() > new Date(user.otpExpiry)) {
+        return res.status(400).json({ success: false, message: 'OTP has expired. Please request a new link.' });
+      }
     }
 
     // Set new password (beforeUpdate hook will hash it)
     user.password = newPassword;
     user.emailOTP = null;
+    user.phoneOTP = null;
     user.otpExpiry = null;
     await user.save();
 
