@@ -23,7 +23,10 @@ app.use(async (req, res, next) => {
     next();
   } catch (err) {
     console.error('Database connection middleware error:', err.message);
-    res.status(500).json({ success: false, message: 'Database initialization error' });
+    return res.status(500).json({
+      success: false,
+      message: `Database connection error (${err.message}). If deployed on Vercel, please set DATABASE_URL in Vercel Environment Variables.`,
+    });
   }
 });
 
