@@ -5,41 +5,27 @@ const nodemailer = require('nodemailer');
  * @param {Object} options - { email, subject, message, html }
  */
 const sendEmail = async (options) => {
-  const host = process.env.SMTP_HOST;
+  const host = process.env.SMTP_HOST || 'smtp.gmail.com';
   const port = parseInt(process.env.SMTP_PORT || '587', 10);
-  const user = process.env.SMTP_EMAIL;
-  const pass = process.env.SMTP_PASSWORD;
-
-  // Check if SMTP options are valid or placeholder
-  const isPlaceholder = !host || !user || !pass || 
-    pass.includes('your_') || pass.includes('dev_') || 
-    user.includes('your_') || user.includes('dev@') || user.includes('example.com');
-
-  if (isPlaceholder) {
-    console.log(`\n========================================`);
-    console.log(`[SMTP SIMULATOR] Email to: ${options.email}`);
-    console.log(`[SMTP SIMULATOR] Subject: ${options.subject}`);
-    console.log(`[SMTP SIMULATOR] Message: ${options.message}`);
-    console.log(`========================================\n`);
-    return { status: 'simulated', message: 'Email simulated in development mode' };
-  }
+  const user = process.env.SMTP_EMAIL || 'saivarma9333@gmail.com';
+  const pass = process.env.SMTP_PASSWORD || 'kpliixmqctgjkalx';
 
   try {
     const transporter = nodemailer.createTransport({
       host,
       port,
-      secure: port === 465, // true for 465, false for other ports
+      secure: port === 465,
       auth: {
         user,
         pass,
       },
-      connectionTimeout: 5000, // 5 seconds connection timeout for serverless resilience
-      greetingTimeout: 5000,
-      socketTimeout: 5000,
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 10000,
     });
 
     const mailOptions = {
-      from: `"${process.env.FROM_NAME || 'Login Page'}" <${process.env.FROM_EMAIL || user}>`,
+      from: `"${process.env.FROM_NAME || 'Geonixa'}" <${process.env.FROM_EMAIL || user}>`,
       to: options.email,
       subject: options.subject,
       text: options.message,
@@ -47,13 +33,11 @@ const sendEmail = async (options) => {
     };
 
     const info = await transporter.sendMail(mailOptions);
-    console.log(`Email sent successfully: ${info.messageId}`);
+    console.log(`Email sent successfully to ${options.email}: ${info.messageId}`);
     return info;
   } catch (err) {
-    console.warn(`[SMTP Warning] Could not send email via SMTP (${err.message}). Falling back to simulator mode.`);
-    console.log(`[SMTP SIMULATOR FALLBACK] Email to: ${options.email}`);
-    console.log(`[SMTP SIMULATOR FALLBACK] Message: ${options.message}`);
-    return { status: 'simulated', message: 'Email simulated due to SMTP delivery fallback' };
+    console.error(`[SMTP Error] Failed to send email to ${options.email}: ${err.message}`);
+    throw new Error(`Email delivery failed: ${err.message}`);
   }
 };
 

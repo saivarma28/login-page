@@ -353,12 +353,9 @@ document.addEventListener('DOMContentLoaded', () => {
           const firstPin = document.querySelector('#reg-pin-container .pin-digit');
           if (firstPin) firstPin.focus();
 
-          let successMsg = data.message;
-          if (data.isSimulated && data.devOtp) {
-            successMsg = `📧 [Demo Mode]: Set SMTP_EMAIL & SMTP_PASSWORD in Vercel for real emails. (Demo OTP: ${data.devOtp})`;
-          } else if (isEmail) {
-            successMsg = `📧 OTP code sent to ${target}! Please check your email inbox.`;
-          }
+          const successMsg = isEmail 
+            ? `📧 OTP code sent to ${target}! Please check your email inbox.`
+            : `📱 OTP code sent successfully to ${target}!`;
 
           showToast(successMsg, 'success');
         } else {

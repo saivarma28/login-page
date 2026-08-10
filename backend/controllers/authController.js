@@ -88,9 +88,6 @@ const sendRegisterOtp = async (req, res) => {
       console.log(`\n[SMS SIMULATOR] Sent OTP ${otp} to phone: ${userPhone}\n`);
     }
 
-    const isSimulated = !emailResult || emailResult.status === 'simulated';
-    const devOtp = isSimulated ? otp : undefined;
-
     res.status(200).json({
       success: true,
       message: isEmailInput 
@@ -98,8 +95,6 @@ const sendRegisterOtp = async (req, res) => {
         : `OTP code sent successfully to ${inputTarget}. Please check your mobile messages!`,
       target: inputTarget,
       isEmail: isEmailInput,
-      isSimulated,
-      devOtp,
     });
   } catch (error) {
     console.error('Send OTP Error:', error);
