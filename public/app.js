@@ -205,7 +205,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (subtextEl) {
       subtextEl.textContent = isNewRegistration 
         ? 'Your account is created successfully' 
-        : 'You are signed in to PulseAuth';
+        : 'You are signed in to Geonixa';
     }
     if (dashUserEmail) dashUserEmail.textContent = user.email || 'N/A';
     if (dashUserPhone) dashUserPhone.textContent = user.phoneNumber || 'Not linked';

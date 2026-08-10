@@ -70,11 +70,11 @@ const sendRegisterOtp = async (req, res) => {
     if (isEmailInput && userEmail) {
       await sendEmail({
         email: userEmail,
-        subject: 'PulseAuth - Registration OTP Code',
+        subject: 'Geonixa - Registration OTP Code',
         message: `Your verification OTP code is: ${otp}`,
         html: `
           <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
-            <h2 style="color: #FF6B35;">PulseAuth Registration</h2>
+            <h2 style="color: #FF6B35;">Geonixa Registration</h2>
             <p>Your verification OTP code is:</p>
             <div style="background: #FFF3EC; padding: 15px; text-align: center; border-radius: 8px; margin: 20px 0;">
               <span style="font-size: 28px; font-weight: bold; letter-spacing: 5px; color: #FF6B35;">${otp}</span>
@@ -523,13 +523,13 @@ const forgotPassword = async (req, res, next) => {
 
       await sendEmail({
         email: user.email,
-        subject: 'PulseAuth - Password Reset Link',
+        subject: 'Geonixa - Password Reset Link',
         message: `Hello ${user.fullName},\n\nClick the link below to reset your password:\n${resetUrl}\n\nAlternatively, your 6-digit OTP code is: ${otp}\n\nThis link expires in 15 minutes.`,
         html: `
           <div style="font-family: Arial, sans-serif; padding: 25px; color: #2D3748; max-width: 520px; margin: 0 auto; border: 1px solid #E2E8F0; border-radius: 12px; background: #ffffff;">
             <div style="text-align: center; margin-bottom: 25px;">
               <h2 style="color: #FF6B35; margin-bottom: 8px;">Reset Your Password</h2>
-              <p style="color: #718096; font-size: 14px;">We received a password reset request for your PulseAuth account.</p>
+              <p style="color: #718096; font-size: 14px;">We received a password reset request for your Geonixa account.</p>
             </div>
             
             <p style="font-size: 15px;">Hello <strong>${user.fullName}</strong>,</p>

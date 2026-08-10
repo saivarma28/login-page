@@ -1,4 +1,4 @@
-# PulseAuth - Authentication Portal
+# Geonixa - Authentication Portal
 
 A modern, full-stack authentication web application built with **Node.js, Express, Sequelize (SQLite), and Vanilla HTML5/CSS3/JavaScript**. Featuring a sleek **Light Orange & Warm White** design system with Firebase SMS Phone Authentication, Email/Password login, OTP verification, and Password Reset.
 
