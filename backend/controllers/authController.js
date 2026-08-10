@@ -98,6 +98,7 @@ const sendRegisterOtp = async (req, res) => {
         : `OTP code sent successfully to ${inputTarget}. Please check your mobile messages!`,
       target: inputTarget,
       isEmail: isEmailInput,
+      isSimulated,
       devOtp,
     });
   } catch (error) {
