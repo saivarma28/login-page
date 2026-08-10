@@ -9,7 +9,16 @@ let sqliteDriver = null;
 try { pgDriver = require('pg'); } catch (e) {}
 try { sqliteDriver = require('sqlite3'); } catch (e) {}
 
-const getDialect = () => process.env.DB_DIALECT || (process.env.DATABASE_URL ? 'postgres' : 'sqlite');
+const getDialect = () => {
+  if (process.env.VERCEL) {
+    const dbUrl = process.env.DATABASE_URL || '';
+    if (dbUrl && !dbUrl.includes('localhost') && !dbUrl.includes('127.0.0.1')) {
+      return 'postgres';
+    }
+    return 'sqlite';
+  }
+  return process.env.DB_DIALECT || (process.env.DATABASE_URL ? 'postgres' : 'sqlite');
+};
 
 const createSequelizeInstance = () => {
   const dialect = getDialect();
